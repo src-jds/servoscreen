@@ -1,0 +1,6 @@
+pip
+wheel
+pyserial
+PyQt5
+pyqtgraph
+numpy

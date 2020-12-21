@@ -11,7 +11,7 @@ print('8E1, 9600 baud.')
 #serial configuration
 try:
 	ser = serial.Serial(
-		port='/dev/ttyUSB0',
+		port='COM10',
 		baudrate=9600,
 		parity=serial.PARITY_EVEN,
 		stopbits=serial.STOPBITS_ONE,
