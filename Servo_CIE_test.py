@@ -6,7 +6,7 @@ import serial
 
 print('===== Servo CIE test program =====\n')
 
-print('Conecting to serial port.')
+print('Conecting to serial _port.')
 print('8E1, 9600 baud.')
 #serial configuration
 try:
@@ -20,11 +20,11 @@ try:
 		timeout=1
 	)
 except serial.SerialException as e:
-	sys.stderr.write('Could not open serial port {}: {}\n'.format(ser.name, e))
+	sys.stderr.write('Could not open serial _port {}: {}\n'.format(ser.name, e))
 	sys.exit(1)
 
 if ser.isOpen():
-	print('Serial port open.\n')
+	print('Serial _port open.\n')
 
 print('Sending HELLO command, HO.')
 print('Expected response: 900PCI')
@@ -41,7 +41,7 @@ print('Vent Response: ' + str(ser.read_until('\x04')) + '\n')
 
 
 
-print('Closing serial port')
+print('Closing serial _port')
 print('===== End Servo CIE test program =====')
 
 ser.close()

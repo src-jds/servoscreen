@@ -7,9 +7,9 @@ import serial
 import servocomms
 
 # serial configuration
-print('\nOpening serial port.')
+print('\nOpening serial _port.')
 try:
-    port = serial.Serial(
+    ser = serial.Serial(
         port='COM10',
         baudrate=9600,
         parity=serial.PARITY_EVEN,
@@ -18,20 +18,20 @@ try:
         #xonxoff=True,
         timeout=1
     )
-except serial.SerialException as e:
-    sys.stderr.write('\nCould not open serial port {}: {}\n'.format(port.name, e))
+except serial.SerialException as err:
+    sys.stderr.write('\nCould not open serial _port: {}\n'.format(err))
     sys.exit(1)
 
 print('\nInitialising Servo Comms.')
-servo = servocomms.ServoCIE(port)
+servo = servocomms.ServoCIE(ser)
 
 print('\nCommanding CIE to enter EXTENDED mode.')
 servo.generalCall()
 
-servo.readcitype()
+servo.readCIType()
 
 print('\nSetting CIE to highest protocol version.')
-ret = servo.getmaxprotocol()
+ret = servo.getMaxProtocol()
 if ret != servo.Error.CHKSUM:
     print('\nHighest protocol version available is ' + str(ret, 'ASCII'))
 else:
@@ -40,11 +40,11 @@ else:
 servo.setProtocol(ret)
 
 print('\nEstablishing data tables.')
-servo.defineaccuireddata('B', [200, 205, 209])
-servo.defineaccuireddata('C', [100])
+servo.defineAcquiredData('B', [200, 205, 209])
+servo.defineAcquiredData('C', [100])
 
 print('\nReading Servo data.')
-servo.readAccuiredData('B')
-servo.readAccuiredData('UC', 100, 1, 4)
+servo.readAcquiredData('B')
+servo.readAcquiredData('C', 100, 1, 4)
 
-port.close()
+ser.close()
