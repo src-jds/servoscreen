@@ -1,6 +1,2 @@
-pip
-wheel
-pyserial
-PyQt5
-pyqtgraph
-numpy
+pyserial~=3.5
+PyQt5~=5.15.2
