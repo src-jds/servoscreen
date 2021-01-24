@@ -1,2 +1,5 @@
 pyserial~=3.5
 PyQt5~=5.15.2
+setuptools~=50.3.2
+pyqtgraph~=0.11.1
+numpy==1.19.3
