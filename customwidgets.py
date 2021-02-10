@@ -1,11 +1,10 @@
 #!/usr/bin/python3
 
+from collections import deque
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel)
 
 import pyqtgraph as pqg
-
-import random
 
 
 class Color(QWidget):
@@ -117,6 +116,7 @@ class Waveform(pqg.PlotWidget):
 
     def __init__(self, title, color, axisPos, minVal, maxVal):
         super(Waveform, self).__init__(enableMenu=False)
+        self.dataPoints = 500
         self.setMouseEnabled(False, False)
         self.hideButtons()
 
@@ -125,27 +125,19 @@ class Waveform(pqg.PlotWidget):
         self.min = minVal
         self.max = maxVal
 
-        self.x = list(range(-500, 0))  # Time points
-        self.y = []  # Data points
-        for i in range(0, 500):
-            self.y.append(random.randint(minVal + 5, maxVal - 5))
+        self.x = deque(range(-self.dataPoints, 0))  # Time points
+        self.y = [0] * self.dataPoints  # Data points
 
         self.setYRange(maxVal, minVal)  # Defines the scale of the Y axis.
 
         pen = pqg.mkPen(color=QtGui.QColor(color), width=3)
         self.data_line = self.plot(self.x, self.y, pen=pen)
 
-        self.timer = QtCore.QTimer()
-        self.timer.setInterval(50)
-        self.timer.timeout.connect(self.updatePlot)
-        self.timer.start()
-
-    def updatePlot(self):  # , value):
+    def updatePlot(self, value):
         self.x = self.x[1:]
         self.x.append(self.x[-1] + 1)
 
         self.y = self.y[1:]
-        self.y.append(random.randint(self.min + 5, self.max - 5))  # value)
-        #  TODO: add actual data to curve.
+        self.y.append(value)
 
         self.data_line.setData(self.x, self.y)

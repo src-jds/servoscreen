@@ -9,7 +9,7 @@ import serial
 import ciedriver
 
 # serial configuration
-print('\nOpening serial _port.')
+print('\nOpening serial port.')
 try:
     ser = serial.Serial(
         port='COM10',
