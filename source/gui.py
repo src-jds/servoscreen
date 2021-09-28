@@ -107,13 +107,13 @@ class ServoMainWindow(QMainWindow):
         # so that only channel num, name, colour and size are listed here.
         numerics = [(205, 'Ppeak', '(cmH2O)', 'yellow', 2),
                     (206, 'Pmean', '(cmH2O)', 'yellow', 1),
-                    (245, 'PEEP', '(cmH2O)', 'yellow', 1),
+                    (208, 'PEEP', '(cmH2O)', 'yellow', 1),
                     (200, 'RR', '(br/min)', 'green', 2),
                     (209, 'O2', '(%)', 'green', 2),
-                    (244, 'Ti/Ttot', '', 'green', 1),
+                    (238, 'I:E', '', 'green', 1),  # TODO: make sure value is displayed as a ratio, i.e. "1.9:1"
                     (248, 'MVe', '(l/min)', 'teal', 2),
                     (202, 'VTi', '(ml)', 'teal', 1),
-                    (204, 'VTe', '(ml)', 'teal', 1)]
+                    (201, 'VTe', '(ml)', 'teal', 1)]
 
         for number in numerics:
             channel = number[0]
