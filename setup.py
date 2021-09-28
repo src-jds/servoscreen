@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='servoscreen',
-    version='0.1',
+    version='0.3',
     packages=[''],
     url='',
     license='GNU General Public License v3.0',

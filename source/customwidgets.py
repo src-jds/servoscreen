@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 
-from collections import deque
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel)
 
@@ -66,7 +65,8 @@ class LargeNumeric(QWidget):
         self.setLayout(widgetLayout)
 
     def setValue(self, value):
-        self.currentValue.setText(value)
+        self.currentValue.setText(str(value))
+        self.currentValue.show()
 
     def setHigh(self, value):
         self.highValue.setText(value)
@@ -106,7 +106,8 @@ class SmallNumeric(QWidget):
         self.setLayout(widgetLayout)
 
     def setValue(self, value):
-        self.currentValue.setText(value)
+        self.currentValue.setText(str(value))
+        self.currentValue.show()
 
 
 class Waveform(pqg.PlotWidget):
@@ -119,16 +120,17 @@ class Waveform(pqg.PlotWidget):
         self.dataPoints = 500
         self.setMouseEnabled(False, False)
         self.hideButtons()
+        #self.enableAutoRange(axis=pqg.ViewBox.YAxis)
 
         self.timeAxis = self.getAxis('bottom')
 
         self.min = minVal
         self.max = maxVal
 
-        self.x = deque(range(-self.dataPoints, 0))  # Time points
+        self.x = list(range(-self.dataPoints, 0))  # Time points
         self.y = [0] * self.dataPoints  # Data points
 
-        self.setYRange(maxVal, minVal)  # Defines the scale of the Y axis.
+        #self.setYRange(maxVal, minVal)  # Defines the scale of the Y axis.
 
         pen = pqg.mkPen(color=QtGui.QColor(color), width=3)
         self.data_line = self.plot(self.x, self.y, pen=pen)

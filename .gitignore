@@ -1,2 +1,4 @@
-/.venv/
-
+/source/dist/
+/source/build/
+/venv/
+/logs/

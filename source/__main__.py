@@ -2,15 +2,15 @@
 
 import sys
 from PyQt5.QtWidgets import QApplication
-from servologging import getLogger
-
+import logging.config
 import gui
-logger = getLogger(__name__)
+
+logging.config.fileConfig('logging.ini', disable_existing_loggers=False)
+logger = logging.getLogger(__name__)
 
 
 def main():
     logger.info('Starting ServoScreen application.')
-
     app = QApplication(sys.argv)
     win = gui.ServoMainWindow()
     win.showMaximized()

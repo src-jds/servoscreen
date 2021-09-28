@@ -2,9 +2,10 @@
 
 import enum
 import binascii
-from servologging import getLogger
+import logging.config
 
-logger = getLogger(__name__)
+logging.config.fileConfig('logging.ini', disable_existing_loggers=False)
+logger = logging.getLogger(__name__)
 
 
 class ServoCIE(object):
@@ -20,30 +21,23 @@ class ServoCIE(object):
 
     dataCategories = ('C', 'B', 'T', 'S', 'A', 'E')
 
-    units = {1: 'ml',
-             2: 'ml/s',
-             3: 'ml/min',
-             4: 'cmH2O',
-             5: 'ml/cmH2O',
-             6: 'breaths/min',
-             7: '%',
-             8: 'l/min',
-             9: 'cmH2O/l/s',
-             10: 'mmHg',
-             11: 'kPa',
-             12: 'mbar',
-             13: 'mV',
-             14: 's',
-             15: 'l/s',
-             16: 'cmH2O/l',
-             17: 'l',
-             18: 'Joule/l',
-             19: 'μV',
-             20: 'no unit',
-             21: 'cmH2O/μV',
-             22: 'breaths/min/l',
-             23: 'min'
-             }
+    units = {1: 'ml', 2: 'ml/s', 3: 'ml/min', 4: 'cmH2O', 5: 'ml/cmH2O', 6: 'breaths/min', 7: '%', 8: 'l/min',
+             9: 'cmH2O/l/s', 10: 'mmHg', 11: 'kPa', 12: 'mbar', 13: 'mV', 14: 's', 15: 'l/s', 16: 'cmH2O/l', 17: 'l',
+             18: 'Joule/l', 19: 'μV', 20: 'no unit', 21: 'cmH2O/μV', 22: 'breaths/min/l', 23: 'min'}
+
+    class StreamStates(enum.Enum):
+        END_FLAG = 0
+        CHECK_SUM = 1
+        ERROR = 2
+        PHASE_FLAG = 3
+        PHASE_DATA = 4
+        CURVE_VAL_FLAG = 5
+        CURVE_FIRST_BYTE = 6
+        CURVE_SECND_BYTE = 7
+        DIFF_VAL_BYTE = 8
+        BREATH_FLAG = 9
+        BREATH_FIRST_BYTE = 10
+        BREATH_SECND_BYTE = 11
 
     class Error(enum.Enum):
         NO_ERROR = 0
@@ -63,16 +57,15 @@ class ServoCIE(object):
     def __init__(self, port):
         self._port = port
         self._extendedModeActive = False
+        self._activeProtocolVersion = 0
         self.openChannels = {category: [] for category in self.dataCategories}
         self.channelData = {category: [] for category in self.dataCategories}
-        self.lastByte = ''
-        self.expectedByte = ''
         self.category = ''
         self.phase = ''
-        self.breathPosition = 0
-        self.curvePosition = 0
-        self.diffPosition = 0
+        self.channelIndex = 0
         self.value = 0
+        self.state = self.StreamStates.PHASE_FLAG
+        self.message = ''
 
     @staticmethod
     def _calculateChecksum(message, binary=False):
@@ -100,22 +93,22 @@ class ServoCIE(object):
                 status = self.Error(ord(message[1:2]))
                 logger.error('Error code in received message: ' + status)
                 return status
-            calcChkSum = self._calculateChecksum(message[:-1], True)
-            if message[-1:] != calcChkSum:
+            calculatedchecksum = self._calculateChecksum(message[:-2], True)  # Send only message bytes.
+            if message[-1:] != calculatedchecksum:
                 logger.error('Last received message failed checksum validation. Received checksum was ' +
                              str(message[-1:]) + ', calculated checksum is ' +
-                             str(calcChkSum) + '.')
+                             str(calculatedchecksum) + '.')
                 return self.Error.RX_CHKSUM
         else:  # Check for ASCII encoded errors.
             if message[:2] == b'ER':
                 status = self.Error(int(message[2:4]))
                 logger.error('Error code in received message: ' + status)
                 return status
-            calcChkSum = self._calculateChecksum(message[-3:-1])
-            if message[-3:-1] != calcChkSum:
+            calculatedchecksum = self._calculateChecksum(message[:-3])  # Send only message bytes.
+            if message[-3:-1] != calculatedchecksum:
                 logger.error('Last received message failed checksum validation. Received checksum was ' +
                              str(message[-1:]) + ', calculated checksum is ' +
-                             str(calcChkSum) + '.')
+                             str(calculatedchecksum) + '.')
                 return self.Error.RX_CHKSUM
         return self.Error.NO_ERROR
 
@@ -137,7 +130,7 @@ class ServoCIE(object):
 
         status = self._checkErrors(response)
         if status == self.Error.NO_ERROR:
-            if response[7] == int(b'0'):
+            if response[7:8] == b'0':
                 if not self._extendedModeActive:
                     self._extendedModeActive = True
                     logger.info('Servo EXTENDED mode activated.')
@@ -217,12 +210,13 @@ class ServoCIE(object):
 
         status = self._checkErrors(response)
         if status == self.Error.NO_ERROR:
+            self._activeProtocolVersion = version
             logger.info('Servo CIE set to protocol version ' + str(version) + '.')
         else:
             logger.warning('Failed to set CIE protocol version. ' + str(status))
         return status
 
-    def defineAcquiredData(self, category, channels=[]):
+    def defineAcquiredData(self, category, channels):
         """
         EXTENDED MODE CMD. Defines the data channels to be read from the Servo. Channels may contain curve, breath,
         trend, settings and alarm data. Only 4 curve channels can be selected, for all others the limit is 50 channels.
@@ -364,17 +358,6 @@ class ServoCIE(object):
         logger.debug('Message to Servo: ' + str(message))
         self._port.write(message)
 
-        response = self._port.read_until(self._endFlag)
-        logger.debug('Servo response: ' + str(response))
-
-        status = self._checkErrors(response)
-        if status == self.Error.NO_ERROR:
-            # TODO: clear self.channelData tables.
-            logger.info('Successfully started defined data stream.')
-        else:
-            logger.warning('Failed to start defined data stream. ' + str(status))
-        return status
-
     def readDataStream(self):
         """
         EXTENDED MODE CMD. This method is called to read serial data from the Servo. The serial port should be checked
@@ -383,98 +366,114 @@ class ServoCIE(object):
         :return status:
         """
         logger.info('Reading data stream from Servo.')
-
-        while self._port.in_waiting():
+        while self._port.in_waiting:
             thisByte = hex(int(binascii.hexlify(self._port.read(1)), 16))
-            nextByte = self.expectedByte
-            if thisByte == '0x81' and self.category == '':  # 0x81 = phase flag, Curve data.
-                self.category = 'C'
-                nextByte = 'phase'
-                logger.debug('Reading curve data.')
-            elif thisByte == '0x42' and self.category == '':  # 0x42 = 'B', Breath data.
-                self.category = 'B'
-                nextByte = 'breathVal1'
-                logger.debug('Reading breath data.')
-            elif thisByte == '0x53' and self.category == '':  # 0x53 = 'S', Settings data.
-                self.category = 'S'
-                nextByte = 'value'
-                logger.debug('Reading settings data.')
+            logger.debug(str(thisByte))
+            self.message = self.message + thisByte[2:]
 
-            if self.expectedByte == 'data' and thisByte == '0x81':  # Diff data new phase flag.
-                nextByte = 'phase'
-                logger.debug('Got new phase flag.')
-            elif self.category == 'C' and thisByte == '0x7f':  # Diff data end flag.
-                self.category = ''
-                nextByte = 'checksum'
-                logger.debug('Got curve data end flag. Clearing category for new data.')
-            elif self.expectedByte == 'data' and thisByte != '0x80':  # Reading differential values.
-                if self.curvePosition != 0:
-                    self.curvePosition = 0
-                channel = self.openChannels[self.category][self.diffPosition][0]
-                lastValue = self.channelData[self.category][channel][-1]
-                diffValue = int(thisByte, 16)
-                if diffValue >= 0x82:
-                    diffValue = diffValue - 256
-                self.channelData[self.category][channel].append(round(lastValue + diffValue, 3))
-                self.diffPosition = (self.diffPosition + 1) % len(self.openChannels['C'])
-                logger.debug('Got differential data for channel number ' + str(channel) + '.')
+            if self.state == self.StreamStates.PHASE_FLAG:
+                if thisByte == hex(int(binascii.hexlify(self._phaseFlag), 16)):
+                    self.category = 'C'
+                    self.state = self.StreamStates.PHASE_DATA
+                elif thisByte == '0x42':  # b'B'
+                    self.category = 'B'
+                    self.state = self.StreamStates.BREATH_FIRST_BYTE
+                    logger.debug('Reading breath data.')
+                elif thisByte == hex(int(binascii.hexlify(self._valueFlag), 16)):
+                    self.category = 'C'
+                    self.state = self.StreamStates.CURVE_FIRST_BYTE
+                else:
+                    self.state = self.StreamStates.ERROR
 
-            if self.lastByte == '0x81' and self.category == 'C' and self.expectedByte == 'phase':  # Reading phase.
+            elif self.state == self.StreamStates.PHASE_DATA:
                 if thisByte == '0x10':
-                    self.phase = 'insp'
-                    nextByte = 'data'
-                    logger.debug('Inspiration phase.')
+                    self.phase = 'Inspiration'
                 elif thisByte == '0x20':
-                    self.phase = 'paus'
-                    nextByte = 'data'
-                    logger.debug('Pause phase.')
+                    self.phase = 'Pause'
                 elif thisByte == '0x30':
-                    self.phase = 'exp'
-                    nextByte = 'data'
-                    logger.debug('Expiration phase.')
+                    self.phase = 'Expiration'
+                else:
+                    self.state = self.StreamStates.ERROR
+                self.state = self.StreamStates.DIFF_VAL_BYTE
+                logger.debug(self.phase + ' phase.')
 
-            if self.expectedByte == 'data' and thisByte == '0x80':  # Reading whole values.
-                if self.diffPosition != 0:
-                    self.diffPosition = 0
-                nextByte = 'curveVal1'
-            elif self.expectedByte == 'curveVal1':  # Got first byte of value data.
-                nextByte = 'curveVal2'
+            elif self.state == self.StreamStates.CURVE_VAL_FLAG:
+                if thisByte == hex(int(binascii.hexlify(self._valueFlag), 16)):
+                    self.state = self.StreamStates.CURVE_FIRST_BYTE
+                else:
+                    self.state = self.StreamStates.ERROR
+
+            elif self.state == self.StreamStates.CURVE_FIRST_BYTE:
                 self.value = thisByte[2:]
-            elif self.expectedByte == 'curveVal2':  # Got second byte of value data.
-                nextByte = 'data'
-                channel = self.openChannels[self.category][self.curvePosition][0]
+                self.state = self.StreamStates.CURVE_SECND_BYTE
+
+            elif self.state == self.StreamStates.CURVE_SECND_BYTE:
                 self.value = int(self.value + thisByte[2:], 16)
-                gain = self.openChannels[self.category][self.curvePosition][1]
-                offset = self.openChannels[self.category][self.curvePosition][2]
-                self.channelData[self.category][channel].append(round(self.value * gain - offset, 3))
+                # Get value parameters.
+                channel = self.openChannels[self.category][self.channelIndex][0]
+                # Add new value to buffer.
+                self.channelData[self.category][channel].append(self.value)
+                logger.debug('Got data (' + str(self.value) + ') for channel number ' + str(channel) + '.')
                 self.value = 0
-                self.curvePosition = (self.curvePosition + 1) % len(self.openChannels['C'])
-                logger.debug('Got data for channel number ' + str(channel) + '.')
+                self.state = self.StreamStates.DIFF_VAL_BYTE
 
-            if self.category == 'B' and thisByte == '0x7f':  # Got all diff data, got end flag.
-                self.category = ''
-                nextByte = 'checksum'
-                logger.debug('Got breath data end flag. Clearing category for new data.')
-            elif self.category == 'B' and self.expectedByte == 'breathVal1':  # Reading breath data.
-                nextByte = 'breathVal2'
-                self.value = thisByte[2:]
-            elif self.expectedByte == 'breathVal2':
-                nextByte = 'breathVal1'
-                channel = self.openChannels[self.category][self.breathPosition][0]
+            elif self.state == self.StreamStates.DIFF_VAL_BYTE:
+                if thisByte == hex(int(binascii.hexlify(self._valueFlag), 16)):
+                    self.channelIndex = (self.channelIndex + 1) % len(self.openChannels['C'])
+                    self.state = self.StreamStates.CURVE_FIRST_BYTE
+                elif thisByte == hex(int(binascii.hexlify(self._endFlag), 16)):
+                    self.state = self.StreamStates.CHECK_SUM
+                elif thisByte == hex(int(binascii.hexlify(self._phaseFlag), 16)):
+                    self.state = self.StreamStates.PHASE_DATA
+                else:
+                    self.channelIndex = (self.channelIndex + 1) % len(self.openChannels['C'])
+                    # Get value parameters.
+                    channel = self.openChannels[self.category][self.channelIndex][0]
+                    lastValue = self.channelData[self.category][channel][-1]
+                    # Compute new value.
+                    self.value = int(thisByte, 16)
+                    if self.value >= 0x82:
+                        self.value = self.value - 256
+                    # Add new value to buffer.
+                    self.channelData[self.category][channel].append(lastValue + self.value)
+                    logger.debug('Got differential data (' + str(self.value) + ') for channel number ' + str(channel) + '.')
+                    self.value = 0
+
+            elif self.state == self.StreamStates.BREATH_FIRST_BYTE:
+                if thisByte == hex(int(binascii.hexlify(self._endFlag), 16)):
+                    self.state = self.StreamStates.CHECK_SUM
+                else:
+                    self.value = thisByte[2:]
+                    self.state = self.StreamStates.BREATH_SECND_BYTE
+
+            elif self.state == self.StreamStates.BREATH_SECND_BYTE:
                 self.value = int(self.value + thisByte[2:], 16)
-                gain = self.openChannels[self.category][self.breathPosition][1]
-                offset = self.openChannels[self.category][self.breathPosition][2]
-                self.channelData[self.category][channel].append(round(self.value * gain - offset, 3))
-                self.breathPosition = (self.breathPosition + 1) % len(self.openChannels['B'])
+                # Get value parameters.
+                channel = self.openChannels[self.category][self.channelIndex][0]
+                # Add new value to buffer.
+                self.channelData[self.category][channel].append(self.value)
+                self.channelIndex = (self.channelIndex + 1) % len(self.openChannels['B'])
+                logger.debug('Got breath data (' + str(self.value) + ') for channel number ' + str(channel) + '.')
+                self.state = self.StreamStates.BREATH_FIRST_BYTE
 
-            if self.expectedByte == 'checksum':
-                nextByte = ''
-                self.breathPosition = 0
-                self.curvePosition = 0
-                self.diffPosition = 0
+            elif self.state == self.StreamStates.CHECK_SUM:
+                self.category = ''
+                self.channelIndex = 0
+                #self._checkErrors(self.message, True)  # May need to comment out if noisy errors.
+                self.message = ''
+                self.state = self.StreamStates.PHASE_FLAG
+                logger.debug('Got end flag and check sum.')
 
-            self.expectedByte = nextByte
-            self.lastByte = thisByte
+            else: # Default case
+                self.state = self.StreamStates.ERROR
+                logger.error('Bad stream state, going to error.')
+
+            if self.state == self.StreamStates.ERROR:  # Runs in same loop (same byte) as ERROR state is set.
+                self.category = ''
+                self.channelIndex = 0
+                self.state = self.StreamStates.PHASE_FLAG
+                self.message = ''
+                logger.error('Data streaming error, attempting to re-sync with stream.')
 
     def testDataStream(self, message):
         """
@@ -484,137 +483,6 @@ class ServoCIE(object):
         :return status:
         """
         logger.info('Reading previous data stream from Servo.')
-
-        for _ in message:
-            thisByte = hex(_)
-            nextByte = self.expectedByte
-            if thisByte == '0x81' and self.category == '':  # 0x81 = phase flag, Curve data.
-                self.category = 'C'
-                nextByte = 'phase'
-                logger.debug('Reading curve data.')
-            elif thisByte == '0x42' and self.category == '':  # 0x42 = 'B', Breath data.
-                self.category = 'B'
-                nextByte = 'breathVal1'
-                logger.debug('Reading breath data.')
-            elif thisByte == '0x53' and self.category == '':  # 0x53 = 'S', Setting data.
-                self.category = 'S'
-                nextByte = 'value'
-                logger.debug('Reading settings data.')
-
-            if self.expectedByte == 'data' and thisByte == '0x81':  # Diff data new phase flag.
-                nextByte = 'phase'
-                logger.debug('Got new phase flag.')
-            elif self.category == 'C' and thisByte == '0x7f':  # Diff data end flag.
-                self.category = ''
-                nextByte = 'checksum'
-                logger.debug('Got curve data end flag. Clearing category for new data.')
-            elif self.expectedByte == 'data' and thisByte != '0x80':  # Reading differential values.
-                if self.curvePosition != 0:
-                    self.curvePosition = 0
-                channel = self.openChannels[self.category][self.diffPosition][0]
-                lastValue = self.channelData[self.category][channel][-1]
-                diffValue = int(thisByte, 16)
-                if diffValue >= 0x82:
-                    diffValue = diffValue - 256
-                self.channelData[self.category][channel].append(round(lastValue + diffValue, 3))
-                self.diffPosition = (self.diffPosition + 1) % len(self.openChannels['C'])
-                logger.debug('Got differential data for channel number ' + str(channel) + '.')
-
-            if self.lastByte == '0x81' and self.category == 'C' and self.expectedByte == 'phase':  # Reading phase.
-                if thisByte == '0x10':
-                    self.phase = 'insp'
-                    nextByte = 'data'
-                    logger.debug('Inspiration phase.')
-                elif thisByte == '0x20':
-                    self.phase = 'paus'
-                    nextByte = 'data'
-                    logger.debug('Pause phase.')
-                elif thisByte == '0x30':
-                    self.phase = 'exp'
-                    nextByte = 'data'
-                    logger.debug('Expiration phase.')
-
-            if self.expectedByte == 'data' and thisByte == '0x80':  # Reading whole values.
-                if self.diffPosition != 0:
-                    self.diffPosition = 0
-                nextByte = 'curveVal1'
-            elif self.expectedByte == 'curveVal1':  # Got first byte of value data.
-                nextByte = 'curveVal2'
-                self.value = thisByte[2:]
-            elif self.expectedByte == 'curveVal2':  # Got second byte of value data.
-                nextByte = 'data'
-                channel = self.openChannels[self.category][self.curvePosition][0]
-                self.value = int(self.value + thisByte[2:], 16)
-                gain = self.openChannels[self.category][self.curvePosition][1]
-                offset = self.openChannels[self.category][self.curvePosition][2]
-                self.channelData[self.category][channel].append(round(self.value * gain - offset, 3))
-                self.value = 0
-                self.curvePosition = (self.curvePosition + 1) % len(self.openChannels['C'])
-                logger.debug('Got data for channel number ' + str(channel) + '.')
-
-            if self.category == 'B' and thisByte == '0x7f':  # Got all diff data, got end flag.
-                self.category = ''
-                nextByte = 'checksum'
-                logger.debug('Got breath data end flag. Clearing category for new data.')
-            elif self.category == 'B' and self.expectedByte == 'breathVal1':  # Reading breath data.
-                nextByte = 'breathVal2'
-                self.value = thisByte[2:]
-            elif self.expectedByte == 'breathVal2':
-                nextByte = 'breathVal1'
-                channel = self.openChannels[self.category][self.breathPosition][0]
-                self.value = int(self.value + thisByte[2:], 16)
-                gain = self.openChannels[self.category][self.breathPosition][1]
-                offset = self.openChannels[self.category][self.breathPosition][2]
-                self.channelData[self.category][channel].append(round(self.value * gain - offset, 3))
-                self.breathPosition = (self.breathPosition + 1) % len(self.openChannels['B'])
-
-            if self.expectedByte == 'checksum':
-                nextByte = ''
-                self.breathPosition = 0
-                self.curvePosition = 0
-                self.diffPosition = 0
-
-            self.expectedByte = nextByte
-            self.lastByte = thisByte
-
-    def parseData(self, category, data):
-        """
-        EXTENDED MODE CMD. This method parses channel data streamed from the Servo and breaks it out into the data
-        structure created by readDataStream() based on data category.
-
-        :param category:
-        :param data:
-        """
-        logger.info('Parsing data.')
-        # TODO: parse each category of data.
-        category = category.upper()
-        if category not in self.dataCategories:
-            logger.warning('Incorrect data category given.')
-            return self.Error.INVALID
-
-        hexData = []
-        for _ in data:
-            hexData.append(hex(_)[2:].zfill(2))
-
-        values = []
-        i = 0
-
-        if category == 'C':
-            for index, byte in enumerate(hexData):
-                if byte == '81':
-                    hexData.pop(index + 1)
-                elif byte == '80':
-                    values[i] = int(hexData.pop(index + 1) + hexData.pop(index + 2))
-                    i += 1
-                else:
-                    # TODO: Find a way to convert a string like '7e' to a byte like b'\x7e'. Pass as first argument to from_bytes().
-                    values[i] = values[i - 1] + int.from_bytes("""b'\x7e'""", signed=True, byteorder='big')
-                    values += 1
-        elif category == 'B':
-            # TODO: Add parsing for breath data.
-            pass
-        else:
-            pass
 
     def readChannelConfig(self, channel):
         """
@@ -627,14 +495,15 @@ class ServoCIE(object):
         logger.info('Reading defined channel configurations.')
 
         validChannel = False
-        for key in self.openChannels:
-            for openedChannel in self.openChannels[key]:
+        category = ''
+        for dataCategory in self.openChannels:
+            for openedChannel in self.openChannels[dataCategory]:
                 if channel == openedChannel:
                     validChannel = True
-                    category = key
+                    category = dataCategory
 
         if not validChannel:
-            logger.warning('Cannot read configuration status for channel, channel in not open.')
+            logger.warning('Cannot read configuration status for channel, channel is not open.')
             return self.Error.INVALID
 
         position = self.openChannels[category].index(channel)  # Record position of channel.
@@ -656,7 +525,10 @@ class ServoCIE(object):
         configuration[1] = gain
         offset = int(configuration[2][:5]) * 10 ** int(configuration[2][-4:])
         configuration[2] = offset
-        unit = self.units[int(configuration[3].lstrip('0'))]
+        if configuration[3].lstrip('0') == '--':
+            unit = 'None'
+        else:
+            unit = self.units[int(configuration[3].lstrip('0'))]
         configuration[3] = unit
 
         self.openChannels[category].pop(position)
@@ -694,9 +566,10 @@ class ServoCIE(object):
         response = self._port.read_until(self._endFlag)
         logger.debug('Servo response: ' + str(response))
 
-        status = self._checkErrors(response)
+        status = self._checkErrors(response[-7:])
         if status == self.Error.NO_ERROR:
             # TODO: clear self.channelData tables.
+            self.state = self.StreamStates.PHASE_FLAG
             logger.info('Successfully ended defined data stream.')
         else:
             logger.warning('Failed to end defined data stream. ' + str(status))

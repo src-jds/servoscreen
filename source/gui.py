@@ -11,9 +11,10 @@ from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QMen
 
 import customwidgets
 import ciedriver
-from servologging import getLogger
+import logging.config
 
-logger = getLogger(__name__)
+logging.config.fileConfig('logging.ini', disable_existing_loggers=False)
+logger = logging.getLogger(__name__)
 
 
 class Worker(QObject):
@@ -45,7 +46,7 @@ class ServoMainWindow(QMainWindow):
         Initializer.
         """
         super().__init__(parent)
-        logger.info('Creating main window.')
+        logger.info('Creating ServoScreen main window.')
 
         # Set some main window properties.
         self.setWindowTitle('ServoScreen')
@@ -86,9 +87,9 @@ class ServoMainWindow(QMainWindow):
         self.numericsWidgets = {}
         # TODO: change the units entry here to name and get units from the Servo config values instead.
         # so that only channel num, name, colour and size are listed here.
-        curves = [(100, 'cmH2O', 'yellow', 'bottom', 0, 30),
-                  (101, 'l/min BTPS', 'green', 'middle', -60, 60),
-                  (102, 'l/min BTPS', 'teal', 'bottom', 0, 400)]
+        curves = [(101, 'cmH2O', 'yellow', 'bottom', -5, 35),
+                  (100, 'l/min BTPS', 'green', 'middle', -1300, 500),
+                  (114, 'l/min BTPS', 'teal', 'bottom', -50, 600)]
 
         for curve in curves:
             channel = curve[0]
@@ -104,15 +105,15 @@ class ServoMainWindow(QMainWindow):
         generalLayout.addLayout(curvesLayout, 5)
         # TODO: remove the unit entry here and instead get the units from the Servo config values instead.
         # so that only channel num, name, colour and size are listed here.
-        numerics = [(201, 'Ppeak', '(cmH2O)', 'yellow', 2),
-                    (202, 'Pmean', '(cmH2O)', 'yellow', 1),
-                    (203, 'PEEP', '(cmH2O)', 'yellow', 1),
-                    (204, 'RR', '(br/min)', 'green', 2),
-                    (205, 'O2', '(%)', 'green', 2),
-                    (206, 'Ti/Ttot', '', 'green', 1),
-                    (207, 'MVe', '(l/min)', 'teal', 2),
-                    (208, 'VTi', '(ml)', 'teal', 1),
-                    (209, 'VTe', '(ml)', 'teal', 1)]
+        numerics = [(205, 'Ppeak', '(cmH2O)', 'yellow', 2),
+                    (206, 'Pmean', '(cmH2O)', 'yellow', 1),
+                    (245, 'PEEP', '(cmH2O)', 'yellow', 1),
+                    (200, 'RR', '(br/min)', 'green', 2),
+                    (209, 'O2', '(%)', 'green', 2),
+                    (244, 'Ti/Ttot', '', 'green', 1),
+                    (248, 'MVe', '(l/min)', 'teal', 2),
+                    (202, 'VTi', '(ml)', 'teal', 1),
+                    (204, 'VTe', '(ml)', 'teal', 1)]
 
         for number in numerics:
             channel = number[0]
@@ -162,7 +163,7 @@ class ServoMainWindow(QMainWindow):
         connectActions = []
         for port in self.availableSerialPorts:
             action = QAction(port.name, self)
-            action.triggered.connect(lambda *args, portToOpen=port: self._connectToSerialPort(portToOpen))
+            action.triggered.connect(lambda *args, targetport=port: self._connectToSerialPort(targetport))
             connectActions.append(action)
 
         self.connectMenu.addActions(connectActions)
@@ -186,6 +187,9 @@ class ServoMainWindow(QMainWindow):
             logger.info('Could not connect to %s' % self.openPort.name)
             sys.stderr.write('\nCould not open serial port: {}\n'.format(err))
             sys.exit(1)
+        finally:
+            while self.openPort.in_waiting:
+                self.openPort.read(1)
 
         logger.info('Connected to %s' % self.openPort.name)
 
@@ -201,7 +205,7 @@ class ServoMainWindow(QMainWindow):
             self.servo.endDataStream()
             logger.info('Disconnected from %s' % self.openPort.name)
             self.openPort.close()
-
+        logger.info('Closing ServoScreen main window.')
         sys.exit(0)
 
     def _initialiseServo(self):
@@ -209,7 +213,7 @@ class ServoMainWindow(QMainWindow):
             self.servo = ciedriver.ServoCIE(self.openPort)
 
         if b'900PCI' not in self.servo.generalCall():
-            logger.warn('Could not connect to Servo-i.')
+            logger.warning('Could not connect to Servo-i.')
         else:
             logger.info('Connected to Servo-i. Setting protocol version.')
             self.servo.readCIType()
@@ -233,13 +237,15 @@ class ServoMainWindow(QMainWindow):
                 for channel in self.servo.openChannels[key]:
                     logger.debug('%s : %s' % (key, channel))
                     self.servo.readChannelConfig(channel)
+            logger.debug(self.servo.openChannels)
 
             logger.info('Starting Servo data stream.')
             self.timer = QTimer()
-            self.timer.timeout.connect(self.checkSerialPort())
+            self.timer.timeout.connect(lambda: self.checkSerialPort())
             self.servo.startDataStream()
-            self.timer.start(50)
+            self.timer.start(5)
 
+        # TODO: Add multithreading to speed up serial responsiveness and keep GUI responsive.
         #self.thread = QThread()
         #self.worker = Worker()
         #self.worker.moveToThread(self.thread)
@@ -256,13 +262,19 @@ class ServoMainWindow(QMainWindow):
             self.servo.readDataStream()
             for category in self.servo.channelData:
                 if category == 'C':  # Leave last data in array.
-                    for channel in self.servo.channelData[category]:
+                    for index, channel in enumerate(self.servo.channelData[category]):
                         while len(self.servo.channelData[category][channel]) > 1:
-                            data = self.servo.channelData[category][channel].pop()
+                            data = self.servo.channelData[category][channel].pop(0)
+                            gain = self.servo.openChannels[category][index][1]
+                            offset = self.servo.openChannels[category][index][2]
+                            data = round(data * gain - offset, 3)
                             self.curvesWidgets[channel].updatePlot(data)
 
                 else:  # For breath and other data, remove all data from array.
-                    for channel in self.servo.channelData[category]:
-                        if len(self.servo.channelData[category][channel]) > 0:
-                            data = self.servo.channelData[category][channel].pop()
+                    for index, channel in enumerate(self.servo.channelData[category]):
+                        while len(self.servo.channelData[category][channel]) > 0:
+                            data = self.servo.channelData[category][channel].pop(0)
+                            gain = self.servo.openChannels[category][index][1]
+                            offset = self.servo.openChannels[category][index][2]
+                            data = round(data * gain - offset, 3)
                             self.numericsWidgets[channel].setValue(data)
