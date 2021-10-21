@@ -38,6 +38,8 @@ class ServoCIE(object):
         BREATH_FLAG = 9
         BREATH_FIRST_BYTE = 10
         BREATH_SECND_BYTE = 11
+        SETTING_FIRST_BYTE = 12
+        SETTING_SECND_BYTE = 13
 
     class Error(enum.Enum):
         NO_ERROR = 0
@@ -53,6 +55,29 @@ class ServoCIE(object):
         TX_CHKSUM = 18
         BUFFER_FUll = 19
         RX_CHKSUM = 20
+
+    class VentilationMode(enum.Enum):
+        PressureControl = 2
+        VolumeControl = 3
+        PressureReg_VolumeControl = 4
+        VolumeSupport = 5
+        SIMVVolContPlusPressureSupport = 6
+        SIMVPressureControlPlusPressureSupport = 7
+        PressureSupportSlashCPAP = 8
+        ModeNotSupportedByCIE = 9
+        SIMVPressureReg_VolumeControlPlusPressureSupport = 10
+        Bivent = 11
+        PressureControlInNIV = 12
+        PressureSupportSlashCPAPInNIV = 13
+        NasalCPAP = 14
+        NAVA = 15
+        NIV_NAVA = 17
+        PressureControlNoPatientTrigger = 18
+        VolumeControlNoPatientTrigger = 19
+        PressureReg_VolumeControlNoPatientTrigger = 20
+        PressureSupportSlashCPAPSwitchToControlIfNoPatientTrigger = 21
+        VolumeSupportSwitchToControlIfNoPatientTrigger = 22
+        VolumeSupportSwitchToPressureReg_VolumeControlIfNoPatientTrigger = 23
 
     def __init__(self, port):
         self._port = port
@@ -375,13 +400,17 @@ class ServoCIE(object):
                 if thisByte == hex(int(binascii.hexlify(self._phaseFlag), 16)):
                     self.category = 'C'
                     self.state = self.StreamStates.PHASE_DATA
+                elif thisByte == hex(int(binascii.hexlify(self._valueFlag), 16)):
+                    self.category = 'C'
+                    self.state = self.StreamStates.CURVE_FIRST_BYTE
                 elif thisByte == '0x42':  # b'B'
                     self.category = 'B'
                     self.state = self.StreamStates.BREATH_FIRST_BYTE
                     logger.debug('Reading breath data.')
-                elif thisByte == hex(int(binascii.hexlify(self._valueFlag), 16)):
-                    self.category = 'C'
-                    self.state = self.StreamStates.CURVE_FIRST_BYTE
+                elif thisByte == '0x53':  # b'S'
+                    self.category = 'S'
+                    self.state = self.StreamStates.SETTING_FIRST_BYTE
+                    logger.debug('Reading settings data.')
                 else:
                     self.state = self.StreamStates.ERROR
 
@@ -413,20 +442,19 @@ class ServoCIE(object):
                 channel = self.openChannels[self.category][self.channelIndex][0]
                 # Add new value to buffer.
                 self.channelData[self.category][channel].append(self.value)
+                self.channelIndex = (self.channelIndex + 1) % len(self.openChannels['C'])
                 logger.debug('Got data (' + str(self.value) + ') for channel number ' + str(channel) + '.')
                 self.value = 0
                 self.state = self.StreamStates.DIFF_VAL_BYTE
 
             elif self.state == self.StreamStates.DIFF_VAL_BYTE:
                 if thisByte == hex(int(binascii.hexlify(self._valueFlag), 16)):
-                    self.channelIndex = (self.channelIndex + 1) % len(self.openChannels['C'])
                     self.state = self.StreamStates.CURVE_FIRST_BYTE
                 elif thisByte == hex(int(binascii.hexlify(self._endFlag), 16)):
                     self.state = self.StreamStates.CHECK_SUM
                 elif thisByte == hex(int(binascii.hexlify(self._phaseFlag), 16)):
                     self.state = self.StreamStates.PHASE_DATA
                 else:
-                    self.channelIndex = (self.channelIndex + 1) % len(self.openChannels['C'])
                     # Get value parameters.
                     channel = self.openChannels[self.category][self.channelIndex][0]
                     lastValue = self.channelData[self.category][channel][-1]
@@ -436,6 +464,7 @@ class ServoCIE(object):
                         self.value = self.value - 256
                     # Add new value to buffer.
                     self.channelData[self.category][channel].append(lastValue + self.value)
+                    self.channelIndex = (self.channelIndex + 1) % len(self.openChannels['C'])
                     logger.debug('Got differential data (' + str(self.value) + ') for channel number ' + str(channel) + '.')
                     self.value = 0
 
@@ -454,6 +483,25 @@ class ServoCIE(object):
                 self.channelData[self.category][channel].append(self.value)
                 self.channelIndex = (self.channelIndex + 1) % len(self.openChannels['B'])
                 logger.debug('Got breath data (' + str(self.value) + ') for channel number ' + str(channel) + '.')
+                self.value = 0
+                self.state = self.StreamStates.BREATH_FIRST_BYTE
+
+            elif self.state == self.StreamStates.SETTING_FIRST_BYTE:
+                if thisByte == hex(int(binascii.hexlify(self._endFlag), 16)):
+                    self.state = self.StreamStates.CHECK_SUM
+                else:
+                    self.value = thisByte[2:]
+                    self.state = self.StreamStates.SETTING_SECND_BYTE
+
+            elif self.state == self.StreamStates.SETTING_SECND_BYTE:
+                self.value = int(self.value + thisByte[2:], 16)
+                # Get value parameters.
+                channel = self.openChannels[self.category][self.channelIndex][0]
+                # Add new value to buffer.
+                self.channelData[self.category][channel].append(self.value)
+                self.channelIndex = (self.channelIndex + 1) % len(self.openChannels['S'])
+                logger.debug('Got setting data (' + str(self.value) + ') for channel number ' + str(channel) + '.')
+                self.value = 0
                 self.state = self.StreamStates.BREATH_FIRST_BYTE
 
             elif self.state == self.StreamStates.CHECK_SUM:

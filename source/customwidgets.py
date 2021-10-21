@@ -115,7 +115,7 @@ class Waveform(pqg.PlotWidget):
     Custom widget to display a waveform along with a name, units, and scale.
     """
 
-    def __init__(self, title, color, axisPos, minVal, maxVal):
+    def __init__(self, title, color, axispos, minval, maxval):
         super(Waveform, self).__init__(enableMenu=False)
         self.dataPoints = 500
         self.setMouseEnabled(False, False)
@@ -124,13 +124,13 @@ class Waveform(pqg.PlotWidget):
 
         self.timeAxis = self.getAxis('bottom')
 
-        self.min = minVal
-        self.max = maxVal
+        self.min = minval
+        self.max = maxval
 
         self.x = list(range(-self.dataPoints, 0))  # Time points
         self.y = [0] * self.dataPoints  # Data points
 
-        #self.setYRange(maxVal, minVal)  # Defines the scale of the Y axis.
+        #self.setYRange(maxval, minval)  # Defines the scale of the Y axis.
 
         pen = pqg.mkPen(color=QtGui.QColor(color), width=3)
         self.data_line = self.plot(self.x, self.y, pen=pen)
@@ -143,3 +143,14 @@ class Waveform(pqg.PlotWidget):
         self.y.append(value)
 
         self.data_line.setData(self.x, self.y)
+
+
+class Textbox(pqg.ValueLabel):
+    """
+    Custom widget to display ventilator mode.
+    """
+    def __init__(self):
+        pass
+
+    def setText(self, message):
+        self.setValue(message)

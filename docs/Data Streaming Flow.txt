@@ -1,0 +1,9 @@
+
+
+<phase_flag><phase><value_flag><value(1,1)><diff_value(1,2)><end_flag><CHK_SUM>
+
+<phase_flag><phase><value_flag><value(1,1)><diff_value(1,2)>...<phase_flag><phase><diff_value(1,X)>...<value_flag><value(1,Y)>...<diff_value(1,n)><end_flag><CHK_SUM>
+
+<phase_flag><phase><value_flag><value(1,1)><diff_value(1,2)>...<phase_flag><phase><diff_value(1,X)>
+							    ...<value_flag><value(1,Y)>
+							    ...<diff_value(1,n)><end_flag><CHK_SUM>

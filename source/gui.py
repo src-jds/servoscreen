@@ -81,10 +81,13 @@ class ServoMainWindow(QMainWindow):
         generalLayout = QHBoxLayout()
         curvesLayout = QVBoxLayout()
         numericsLayout = QVBoxLayout()
+        settingsLayout = QVBoxLayout()
 
         # Fill the layout.
         self.curvesWidgets = {}
         self.numericsWidgets = {}
+        self.settingsWidgets = {}
+
         # TODO: change the units entry here to name and get units from the Servo config values instead.
         # so that only channel num, name, colour and size are listed here.
         curves = [(101, 'cmH2O', 'yellow', 'bottom', -5, 35),
@@ -103,6 +106,7 @@ class ServoMainWindow(QMainWindow):
             curvesLayout.addWidget(self.curvesWidgets[channel])
 
         generalLayout.addLayout(curvesLayout, 5)
+
         # TODO: remove the unit entry here and instead get the units from the Servo config values instead.
         # so that only channel num, name, colour and size are listed here.
         numerics = [(205, 'Ppeak', '(cmH2O)', 'yellow', 2),
@@ -131,6 +135,12 @@ class ServoMainWindow(QMainWindow):
 
         generalLayout.addLayout(numericsLayout, 1)
 
+        self.settingsWidgets[310] = customwidgets.Textbox()
+
+        #settingsLayout.addWidget(self.settingsWidgets[310])
+
+        #generalLayout.addLayout(settingsLayout, 1)
+
         self.centralWidget.setLayout(generalLayout)
 
     def _createMenu(self):
@@ -142,7 +152,7 @@ class ServoMainWindow(QMainWindow):
         self.refreshSerialPortsAction.triggered.connect(lambda: self._populateSerialPorts())
         fileMenu.addAction(self.refreshSerialPortsAction)
 
-        self.connectMenu = fileMenu.addMenu('Connect to Serial Port')
+        self.connectMenu = fileMenu.addMenu('Connect to Servo Ventilator')
         self._populateSerialPorts()
 
         fileMenu.addSeparator()
@@ -269,6 +279,12 @@ class ServoMainWindow(QMainWindow):
                             offset = self.servo.openChannels[category][index][2]
                             data = round(data * gain - offset, 3)
                             self.curvesWidgets[channel].updatePlot(data)
+
+                if category == 'S':
+                    for index, channel in enumerate(self.servo.channelData[category]):
+                        while len(self.servo.channelData[category][channel]) > 0:
+                            data = self.servo.channelData[category][channel].pop(0)
+                            self.settingsWidgets[channel].setText(self.servo.VentilationMode(data).name)
 
                 else:  # For breath and other data, remove all data from array.
                     for index, channel in enumerate(self.servo.channelData[category]):
