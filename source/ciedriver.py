@@ -25,6 +25,28 @@ class ServoCIE(object):
              9: 'cmH2O/l/s', 10: 'mmHg', 11: 'kPa', 12: 'mbar', 13: 'mV', 14: 's', 15: 'l/s', 16: 'cmH2O/l', 17: 'l',
              18: 'Joule/l', 19: 'μV', 20: 'no unit', 21: 'cmH2O/μV', 22: 'breaths/min/l', 23: 'min'}
 
+    ventilationMode = {2: "Pressure Control",
+                       3: "Volume Control",
+                       4: "Pressure Reg. Volume Control",
+                       5: "Volume Support",
+                       6: "SIMV (Vol. Cont.) + Pressure Support",
+                       7: "SIMV (Pressure Control) + Pressure Support",
+                       8: "Pressure Support / CPAP",
+                       9: "Ventilation mode not supported by CIE",
+                       10: "SIMV (Pressure Reg. Volume Control) + Pressure Support",
+                       11: "Bivent",
+                       12: "Pressure Control in NIV",
+                       13: "Pressure Support / CPAP in NIV",
+                       14: "Nasal CPAP",
+                       15: "NAVA",
+                       17: "NIV NAVA",
+                       18: "Pressure Control, No Patient Trigger",
+                       19: "Volume Control, No Patient Trigger",
+                       20: "Pressure Reg. Volume Control, No Patient Trigger",
+                       21: "Pressure Support / CPAP (Switch to Pressure Control if0 No Patient Trigger)",
+                       22: "Volume Support (Switch to Volume Control if No Patient Trigger)",
+                       23: "Volume Support (Switch to Pressure Reg. Volume Control if No Patient Trigger)"}
+
     class StreamStates(enum.Enum):
         END_FLAG = 0
         CHECK_SUM = 1
@@ -55,29 +77,6 @@ class ServoCIE(object):
         TX_CHKSUM = 18
         BUFFER_FUll = 19
         RX_CHKSUM = 20
-
-    class VentilationMode(enum.Enum):
-        PressureControl = 2
-        VolumeControl = 3
-        PressureReg_VolumeControl = 4
-        VolumeSupport = 5
-        SIMVVolContPlusPressureSupport = 6
-        SIMVPressureControlPlusPressureSupport = 7
-        PressureSupportSlashCPAP = 8
-        ModeNotSupportedByCIE = 9
-        SIMVPressureReg_VolumeControlPlusPressureSupport = 10
-        Bivent = 11
-        PressureControlInNIV = 12
-        PressureSupportSlashCPAPInNIV = 13
-        NasalCPAP = 14
-        NAVA = 15
-        NIV_NAVA = 17
-        PressureControlNoPatientTrigger = 18
-        VolumeControlNoPatientTrigger = 19
-        PressureReg_VolumeControlNoPatientTrigger = 20
-        PressureSupportSlashCPAPSwitchToControlIfNoPatientTrigger = 21
-        VolumeSupportSwitchToControlIfNoPatientTrigger = 22
-        VolumeSupportSwitchToPressureReg_VolumeControlIfNoPatientTrigger = 23
 
     def __init__(self, port):
         self._port = port
@@ -465,7 +464,8 @@ class ServoCIE(object):
                     # Add new value to buffer.
                     self.channelData[self.category][channel].append(lastValue + self.value)
                     self.channelIndex = (self.channelIndex + 1) % len(self.openChannels['C'])
-                    logger.debug('Got differential data (' + str(self.value) + ') for channel number ' + str(channel) + '.')
+                    logger.debug(
+                        'Got differential data (' + str(self.value) + ') for channel number ' + str(channel) + '.')
                     self.value = 0
 
             elif self.state == self.StreamStates.BREATH_FIRST_BYTE:
@@ -507,12 +507,12 @@ class ServoCIE(object):
             elif self.state == self.StreamStates.CHECK_SUM:
                 self.category = ''
                 self.channelIndex = 0
-                #self._checkErrors(self.message, True)  # May need to comment out if noisy errors.
+                # self._checkErrors(self.message, True)  # May need to comment out if noisy errors.
                 self.message = ''
                 self.state = self.StreamStates.PHASE_FLAG
                 logger.debug('Got end flag and check sum.')
 
-            else: # Default case
+            else:  # Default case
                 self.state = self.StreamStates.ERROR
                 logger.error('Bad stream state, going to error.')
 

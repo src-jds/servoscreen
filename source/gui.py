@@ -7,7 +7,7 @@ import serial.tools.list_ports
 
 from PyQt5 import QtGui
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, QTimer
-from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QMenu, QAction
+from PyQt5.QtWidgets import QMainWindow, QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QMenu, QAction
 
 import customwidgets
 import ciedriver
@@ -78,7 +78,7 @@ class ServoMainWindow(QMainWindow):
         """
         Set the main window layout.
         """
-        generalLayout = QHBoxLayout()
+        generalLayout = QGridLayout()
         curvesLayout = QVBoxLayout()
         numericsLayout = QVBoxLayout()
         settingsLayout = QVBoxLayout()
@@ -86,7 +86,10 @@ class ServoMainWindow(QMainWindow):
         # Fill the layout.
         self.curvesWidgets = {}
         self.numericsWidgets = {}
-        self.settingsWidgets = {}
+
+        self.settingsWidgets = {310: customwidgets.Textbox()}
+        settingsLayout.addWidget(self.settingsWidgets[310], 1)
+        generalLayout.addLayout(settingsLayout, 0, 0, 1, 2)
 
         # TODO: change the units entry here to name and get units from the Servo config values instead.
         # so that only channel num, name, colour and size are listed here.
@@ -105,7 +108,8 @@ class ServoMainWindow(QMainWindow):
             self.curvesWidgets[channel] = customwidgets.Waveform(title, colour, axis, minVal, maxVal)
             curvesLayout.addWidget(self.curvesWidgets[channel])
 
-        generalLayout.addLayout(curvesLayout, 5)
+        generalLayout.addLayout(curvesLayout, 1, 0)
+        generalLayout.setColumnStretch(0, 5)
 
         # TODO: remove the unit entry here and instead get the units from the Servo config values instead.
         # so that only channel num, name, colour and size are listed here.
@@ -114,7 +118,7 @@ class ServoMainWindow(QMainWindow):
                     (208, 'PEEP', '(cmH2O)', 'yellow', 1),
                     (200, 'RR', '(br/min)', 'green', 2),
                     (209, 'O2', '(%)', 'green', 2),
-                    (238, 'I:E', '', 'green', 1),  # TODO: make sure value is displayed as a ratio, i.e. "1.9:1"
+                    (238, 'I:E', 'ratio', 'green', 1),
                     (248, 'MVe', '(l/min)', 'teal', 2),
                     (202, 'VTi', '(ml)', 'teal', 1),
                     (201, 'VTe', '(ml)', 'teal', 1)]
@@ -133,13 +137,8 @@ class ServoMainWindow(QMainWindow):
 
             numericsLayout.addWidget(self.numericsWidgets[channel], size)
 
-        generalLayout.addLayout(numericsLayout, 1)
-
-        self.settingsWidgets[310] = customwidgets.Textbox()
-
-        #settingsLayout.addWidget(self.settingsWidgets[310])
-
-        #generalLayout.addLayout(settingsLayout, 1)
+        generalLayout.addLayout(numericsLayout, 1, 1)
+        generalLayout.setColumnStretch(1, 1)
 
         self.centralWidget.setLayout(generalLayout)
 
@@ -233,14 +232,20 @@ class ServoMainWindow(QMainWindow):
             logger.info('Setting up data tables.')
             breathChannels = []
             curveChannels = []
+            settingChannels = []
+
             for channel in self.curvesWidgets:
                 curveChannels.append(channel)
 
             for channel in self.numericsWidgets:
                 breathChannels.append(channel)
 
+            for channel in self.settingsWidgets:
+                settingChannels.append(channel)
+
             self.servo.defineAcquiredData('B', breathChannels)
             self.servo.defineAcquiredData('C', curveChannels)
+            self.servo.defineAcquiredData('S', settingChannels)
 
             logger.info('Reading open channel configurations.')
             for key in self.servo.openChannels:
@@ -284,7 +289,10 @@ class ServoMainWindow(QMainWindow):
                     for index, channel in enumerate(self.servo.channelData[category]):
                         while len(self.servo.channelData[category][channel]) > 0:
                             data = self.servo.channelData[category][channel].pop(0)
-                            self.settingsWidgets[channel].setText(self.servo.VentilationMode(data).name)
+                            if data not in self.servo.ventilationMode:
+                                self.settingsWidgets[channel].setText('Ventilator Mode Not Found')
+                            else:
+                                self.settingsWidgets[channel].setText(self.servo.ventilationMode.get(data))
 
                 else:  # For breath and other data, remove all data from array.
                     for index, channel in enumerate(self.servo.channelData[category]):
@@ -294,3 +302,4 @@ class ServoMainWindow(QMainWindow):
                             offset = self.servo.openChannels[category][index][2]
                             data = round(data * gain - offset, 3)
                             self.numericsWidgets[channel].setValue(data)
+

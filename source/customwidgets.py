@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel)
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
 
 import pyqtgraph as pqg
 
@@ -82,6 +82,7 @@ class SmallNumeric(QWidget):
 
     def __init__(self, name, unit, colour):
         super(SmallNumeric, self).__init__()
+        self.isRatio = False
         widgetLayout = QHBoxLayout()
         leftColumn = QVBoxLayout()
 
@@ -92,8 +93,13 @@ class SmallNumeric(QWidget):
 
         self.heading = QLabel(str(name))
         self.heading.setFont(QtGui.QFont("Arial", 14, QtGui.QFont.Bold))
-        self.units = QLabel(str(unit))
-        self.units.setFont(QtGui.QFont("Arial", 12))
+        if unit == 'ratio':
+            self.isRatio = True
+            self.units = QLabel('')
+            self.units.setFont(QtGui.QFont("Arial", 12))
+        else:
+            self.units = QLabel(str(unit))
+            self.units.setFont(QtGui.QFont("Arial", 12))
 
         leftColumn.addWidget(self.heading, 1)
         leftColumn.addWidget(self.units, 1)
@@ -106,7 +112,14 @@ class SmallNumeric(QWidget):
         self.setLayout(widgetLayout)
 
     def setValue(self, value):
-        self.currentValue.setText(str(value))
+        if self.isRatio:
+            if value < 1:
+                self.currentValue.setText('1:' + str(round(1/value, 1)))
+            else:
+                self.currentValue.setText(str(value) + ':1')
+        else:
+            self.currentValue.setText(str(value))
+
         self.currentValue.show()
 
 
@@ -145,12 +158,12 @@ class Waveform(pqg.PlotWidget):
         self.data_line.setData(self.x, self.y)
 
 
-class Textbox(pqg.ValueLabel):
+class Textbox(QLabel):
     """
     Custom widget to display ventilator mode.
     """
     def __init__(self):
-        pass
-
-    def setText(self, message):
-        self.setValue(message)
+        super(Textbox, self).__init__()
+        self.setStyleSheet("QLabel { color : white; }")
+        self.setAlignment(QtCore.Qt.AlignCenter)
+        self.setFont(QtGui.QFont('Arial', 20))
