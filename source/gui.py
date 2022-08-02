@@ -222,43 +222,48 @@ class ServoMainWindow(QMainWindow):
             self.servo = ciedriver.ServoCIE(self.openPort)
 
         if b'900PCI' not in self.servo.generalCall():
-            logger.warning('Could not connect to Servo-i.')
-        else:
-            logger.info('Connected to Servo-i. Setting protocol version.')
-            self.servo.readCIType()
-            maxProtocol = self.servo.getMaxProtocol()
-            self.servo.setProtocol(maxProtocol)
+            logger.warning('Could not connect to Servo-i. Sending end data stream command and retrying.')
+            self.servo.endDataStream()
+            if b'900PCI' not in self.servo.generalCall():
+                logger.warning('Could not connect to Servo-i.')
+                self.settingsWidgets[310].setText('Failed to connect to Servo-i.')
+                return
 
-            logger.info('Setting up data tables.')
-            breathChannels = []
-            curveChannels = []
-            settingChannels = []
+        logger.info('Connected to Servo-i. Setting protocol version.')
+        self.servo.readCIType()
+        maxProtocol = self.servo.getMaxProtocol()
+        self.servo.setProtocol(maxProtocol)
 
-            for channel in self.curvesWidgets:
-                curveChannels.append(channel)
+        logger.info('Setting up data tables.')
+        breathChannels = []
+        curveChannels = []
+        settingChannels = []
 
-            for channel in self.numericsWidgets:
-                breathChannels.append(channel)
+        for channel in self.curvesWidgets:
+            curveChannels.append(channel)
 
-            for channel in self.settingsWidgets:
-                settingChannels.append(channel)
+        for channel in self.numericsWidgets:
+            breathChannels.append(channel)
 
-            self.servo.defineAcquiredData('B', breathChannels)
-            self.servo.defineAcquiredData('C', curveChannels)
-            self.servo.defineAcquiredData('S', settingChannels)
+        for channel in self.settingsWidgets:
+            settingChannels.append(channel)
 
-            logger.info('Reading open channel configurations.')
-            for key in self.servo.openChannels:
-                for channel in self.servo.openChannels[key]:
-                    logger.debug('%s : %s' % (key, channel))
-                    self.servo.readChannelConfig(channel)
-            logger.debug(self.servo.openChannels)
+        self.servo.defineAcquiredData('B', breathChannels)
+        self.servo.defineAcquiredData('C', curveChannels)
+        self.servo.defineAcquiredData('S', settingChannels)
 
-            logger.info('Starting Servo data stream.')
-            self.timer = QTimer()
-            self.timer.timeout.connect(lambda: self.checkSerialPort())
-            self.servo.startDataStream()
-            self.timer.start(5)
+        logger.info('Reading open channel configurations.')
+        for key in self.servo.openChannels:
+            for channel in self.servo.openChannels[key]:
+                logger.debug('%s : %s' % (key, channel))
+                self.servo.readChannelConfig(channel)
+        logger.debug(self.servo.openChannels)
+
+        logger.info('Starting Servo data stream.')
+        self.timer = QTimer()
+        self.timer.timeout.connect(lambda: self.checkSerialPort())
+        self.servo.startDataStream()
+        self.timer.start(5)
 
         # TODO: Add multithreading to speed up serial responsiveness and keep GUI responsive.
         #self.thread = QThread()
@@ -285,7 +290,7 @@ class ServoMainWindow(QMainWindow):
                             data = round(data * gain - offset, 3)
                             self.curvesWidgets[channel].updatePlot(data)
 
-                if category == 'S':
+                if category == 'S':  # Safe to remove all data
                     for index, channel in enumerate(self.servo.channelData[category]):
                         while len(self.servo.channelData[category][channel]) > 0:
                             data = self.servo.channelData[category][channel].pop(0)
@@ -294,7 +299,7 @@ class ServoMainWindow(QMainWindow):
                             else:
                                 self.settingsWidgets[channel].setText(self.servo.ventilationMode.get(data))
 
-                else:  # For breath and other data, remove all data from array.
+                if category == 'B':  # Safe to remove all data
                     for index, channel in enumerate(self.servo.channelData[category]):
                         while len(self.servo.channelData[category][channel]) > 0:
                             data = self.servo.channelData[category][channel].pop(0)
@@ -302,4 +307,8 @@ class ServoMainWindow(QMainWindow):
                             offset = self.servo.openChannels[category][index][2]
                             data = round(data * gain - offset, 3)
                             self.numericsWidgets[channel].setValue(data)
+
+                else: # catches empty data categories
+                    #logger.debug('Empty data category: ' + category)
+                    pass
 

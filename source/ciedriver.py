@@ -198,7 +198,7 @@ class ServoCIE(object):
         """
         EXTENDED MODE CMD. Requests highest available CIE protocol version available from Servo.
         """
-        logger.info('Getting highest available protocol version available.')
+        logger.info('Getting highest available protocol version.')
 
         message = b'RHVE'
         message = message + self._calculateChecksum(message) + self._endOfTransmission
@@ -391,7 +391,7 @@ class ServoCIE(object):
         """
         logger.info('Reading data stream from Servo.')
         while self._port.in_waiting:
-            thisByte = hex(int(binascii.hexlify(self._port.read(1)), 16))
+            thisByte = str.format('0x{:02x}', int(binascii.hexlify(self._port.read(1)), 16))
             logger.debug(str(thisByte))
             self.message = self.message + thisByte[2:]
 
@@ -565,15 +565,21 @@ class ServoCIE(object):
         response = self._port.read_until(self._endFlag)
         logger.debug('Servo response: ' + str(response))
 
-        configuration = list(str(response[4:-9], 'utf-8').split(','))
+        configuration = list(str(response[4:-9], 'utf-8').split(',')) #TODO: Split out sampling time and CHKSUM <sampling_time>;<ch1>,<gain>,<offset>,<unit>,<type>,<id>;<CHK><EOT>
 
         ch_num = int(configuration[0])
         configuration[0] = ch_num
-        gain = int(configuration[1][:5]) * 10 ** int(configuration[1][-4:])
+        if '--' in configuration[1]:
+            gain = 'None'
+        else:
+            gain = int(configuration[1][:5]) * 10 ** int(configuration[1][-4:])
         configuration[1] = gain
-        offset = int(configuration[2][:5]) * 10 ** int(configuration[2][-4:])
+        if '--' in configuration[2]:
+            offset = 'None'
+        else:
+            offset = int(configuration[2][:5]) * 10 ** int(configuration[2][-4:])
         configuration[2] = offset
-        if configuration[3].lstrip('0') == '--':
+        if '--' in configuration[3]: # configuration[3].lstrip('0') == '--':
             unit = 'None'
         else:
             unit = self.units[int(configuration[3].lstrip('0'))]
@@ -606,7 +612,7 @@ class ServoCIE(object):
         logger.info('Ending acquired data stream.')
 
         message = self._escape
-        message = message + self._calculateChecksum(message) + self._endOfTransmission
+        message = message + self._endOfTransmission
 
         logger.debug('Message to Servo: ' + str(message))
         self._port.write(message)
@@ -614,7 +620,7 @@ class ServoCIE(object):
         response = self._port.read_until(self._endFlag)
         logger.debug('Servo response: ' + str(response))
 
-        status = self._checkErrors(response[-7:])
+        status = self._checkErrors(response[-4:])
         if status == self.Error.NO_ERROR:
             # TODO: clear self.channelData tables.
             self.state = self.StreamStates.PHASE_FLAG

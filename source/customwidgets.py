@@ -42,7 +42,7 @@ class LargeNumeric(QWidget):
         self.heading.setFont(self.headingFont)
 
         self.currentValue = QLabel(str(0))
-        self.currentValueFont = QtGui.QFont("Arial", 50, QtGui.QFont.Bold)
+        self.currentValueFont = QtGui.QFont("Arial", 45, QtGui.QFont.Bold)  # TODO: auto resize font based on different screen sizes - Complicated
         self.currentValue.setFont(self.currentValueFont)
         self.currentValue.setAlignment(QtCore.Qt.AlignHCenter)
 
@@ -96,10 +96,9 @@ class SmallNumeric(QWidget):
         if unit == 'ratio':
             self.isRatio = True
             self.units = QLabel('')
-            self.units.setFont(QtGui.QFont("Arial", 12))
         else:
             self.units = QLabel(str(unit))
-            self.units.setFont(QtGui.QFont("Arial", 12))
+        self.units.setFont(QtGui.QFont("Arial", 12))
 
         leftColumn.addWidget(self.heading, 1)
         leftColumn.addWidget(self.units, 1)
@@ -116,7 +115,7 @@ class SmallNumeric(QWidget):
             if value < 1:
                 self.currentValue.setText('1:' + str(round(1/value, 1)))
             else:
-                self.currentValue.setText(str(value) + ':1')
+                self.currentValue.setText(str(round(value, 1)) + ':1')
         else:
             self.currentValue.setText(str(value))
 
@@ -127,6 +126,7 @@ class Waveform(pqg.PlotWidget):
     """
     Custom widget to display a waveform along with a name, units, and scale.
     """
+    # TODO: Add filtering to remove glitches in the data.
 
     def __init__(self, title, color, axispos, minval, maxval):
         super(Waveform, self).__init__(enableMenu=False)
