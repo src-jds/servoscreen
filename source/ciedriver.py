@@ -40,12 +40,12 @@ class ServoCIE(object):
                        14: "Nasal CPAP",
                        15: "NAVA",
                        17: "NIV NAVA",
-                       18: "Pressure Control, No Patient Trigger",
-                       19: "Volume Control, No Patient Trigger",
-                       20: "Pressure Reg. Volume Control, No Patient Trigger",
-                       21: "Pressure Support / CPAP (Switch to Pressure Control if0 No Patient Trigger)",
-                       22: "Volume Support (Switch to Volume Control if No Patient Trigger)",
-                       23: "Volume Support (Switch to Pressure Reg. Volume Control if No Patient Trigger)"}
+                       18: "Pressure Control, no patient trigger",
+                       19: "Volume Control, no patient trigger",
+                       20: "Pressure Reg. Volume Control, no patient trigger",
+                       21: "Pressure Support / CPAP (switch to Pressure Control if no patient trigger)",
+                       22: "Volume Support (switch to Volume Control if no patient trigger)",
+                       23: "Volume Support (switch to Pressure Reg. Volume Control if no patient trigger)"}
 
     class StreamStates(enum.Enum):
         END_FLAG = 0

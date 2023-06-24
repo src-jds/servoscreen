@@ -31,7 +31,7 @@ class Worker(QObject):
         :return:
         """
         while True:  # TODO: Add finish parameter.
-            servo.readDataStream()
+            self.servo.readDataStream()
 
         #self.finished.emit()
 
@@ -40,6 +40,9 @@ class ServoMainWindow(QMainWindow):
     """
     Main servoMainWindow.
     """
+
+    checkSerialPortTimerMsec = 5
+    currentVentilationMode = "Ventilator not connected"
 
     def __init__(self, parent=None):
         """
@@ -90,6 +93,7 @@ class ServoMainWindow(QMainWindow):
         self.settingsWidgets = {310: customwidgets.Textbox()}
         settingsLayout.addWidget(self.settingsWidgets[310], 1)
         generalLayout.addLayout(settingsLayout, 0, 0, 1, 2)
+        self.settingsWidgets[310].setText(self.currentVentilationMode)
 
         # TODO: change the units entry here to name and get units from the Servo config values instead.
         # so that only channel num, name, colour and size are listed here.
@@ -218,6 +222,12 @@ class ServoMainWindow(QMainWindow):
         sys.exit(0)
 
     def _initialiseServo(self):
+        """
+        This function initializes the ciedriver and configures the Servo Ventilator's CIE
+        interface. It defines the data channels based on the lists defined earlier and sends
+        them to the Servo.
+        It also configures the GUI components which display the return data.
+        """
         if self.openPort.is_open:
             self.servo = ciedriver.ServoCIE(self.openPort)
 
@@ -260,10 +270,12 @@ class ServoMainWindow(QMainWindow):
         logger.debug(self.servo.openChannels)
 
         logger.info('Starting Servo data stream.')
+        self.currentVentilationMode = "Ventilator connected, waiting for Mode data"
+        self.settingsWidgets[310].setText(self.currentVentilationMode)
         self.timer = QTimer()
         self.timer.timeout.connect(lambda: self.checkSerialPort())
         self.servo.startDataStream()
-        self.timer.start(5)
+        self.timer.start(self.checkSerialPortTimerMsec)
 
         # TODO: Add multithreading to speed up serial responsiveness and keep GUI responsive.
         #self.thread = QThread()
@@ -278,6 +290,13 @@ class ServoMainWindow(QMainWindow):
         #self.thread.start()
 
     def checkSerialPort(self):
+        """
+        This function reads the deserialized data out of the ciedriver buffers and sends it to the
+        correct GUI components.
+        C = plot data
+        S = setting data (only ventilation mode at present)
+        B = breath data (numerical values)
+        """
         if self.openPort.in_waiting:
             self.servo.readDataStream()
             for category in self.servo.channelData:
@@ -297,7 +316,8 @@ class ServoMainWindow(QMainWindow):
                             if data not in self.servo.ventilationMode:
                                 self.settingsWidgets[channel].setText('Ventilator Mode Not Found')
                             else:
-                                self.settingsWidgets[channel].setText(self.servo.ventilationMode.get(data))
+                                self.currentVentilationMode = self.servo.ventilationMode.get(data)
+                                self.settingsWidgets[channel].setText(self.currentVentilationMode)
 
                 if category == 'B':  # Safe to remove all data
                     for index, channel in enumerate(self.servo.channelData[category]):
@@ -306,7 +326,13 @@ class ServoMainWindow(QMainWindow):
                             gain = self.servo.openChannels[category][index][1]
                             offset = self.servo.openChannels[category][index][2]
                             data = round(data * gain - offset, 3)
-                            self.numericsWidgets[channel].setValue(data)
+                            if channel == 238 and self.currentVentilationMode not in ["Pressure Control",
+                                                                                      "Volume Control",
+                                                                                      "Pressure Reg. Volume Control"]:
+                                self.numericsWidgets[channel].currentValue.setText("NA")
+                                self.numericsWidgets[channel].currentValue.show()
+                            else:
+                                self.numericsWidgets[channel].setValue(data)
 
                 else: # catches empty data categories
                     #logger.debug('Empty data category: ' + category)

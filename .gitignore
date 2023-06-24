@@ -1,4 +1,4 @@
 /source/dist/
 /source/build/
 /venv/
-/logs/
+/collected logs for debugging/
