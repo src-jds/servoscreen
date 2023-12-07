@@ -43,6 +43,7 @@ class ServoMainWindow(QMainWindow):
 
     checkSerialPortTimerMsec = 5
     currentVentilationMode = "Ventilator not connected"
+    IEChannels = ["Pressure Control", "Volume Control", "Pressure Reg. Volume Control"]
 
     def __init__(self, parent=None):
         """
@@ -89,14 +90,12 @@ class ServoMainWindow(QMainWindow):
         # Fill the layout.
         self.curvesWidgets = {}
         self.numericsWidgets = {}
-
         self.settingsWidgets = {310: customwidgets.Textbox()}
+
         settingsLayout.addWidget(self.settingsWidgets[310], 1)
         generalLayout.addLayout(settingsLayout, 0, 0, 1, 2)
         self.settingsWidgets[310].setText(self.currentVentilationMode)
 
-        # TODO: change the units entry here to name and get units from the Servo config values instead.
-        # so that only channel num, name, colour and size are listed here.
         curves = [(101, 'cmH2O', 'yellow', 'bottom', -5, 35),
                   (100, 'l/min BTPS', 'green', 'middle', -1300, 500),
                   (114, 'l/min BTPS', 'teal', 'bottom', -50, 600)]
@@ -115,8 +114,6 @@ class ServoMainWindow(QMainWindow):
         generalLayout.addLayout(curvesLayout, 1, 0)
         generalLayout.setColumnStretch(0, 5)
 
-        # TODO: remove the unit entry here and instead get the units from the Servo config values instead.
-        # so that only channel num, name, colour and size are listed here.
         numerics = [(205, 'Ppeak', '(cmH2O)', 'yellow', 2),
                     (206, 'Pmean', '(cmH2O)', 'yellow', 1),
                     (208, 'PEEP', '(cmH2O)', 'yellow', 1),
@@ -245,18 +242,9 @@ class ServoMainWindow(QMainWindow):
         self.servo.setProtocol(maxProtocol)
 
         logger.info('Setting up data tables.')
-        breathChannels = []
-        curveChannels = []
-        settingChannels = []
-
-        for channel in self.curvesWidgets:
-            curveChannels.append(channel)
-
-        for channel in self.numericsWidgets:
-            breathChannels.append(channel)
-
-        for channel in self.settingsWidgets:
-            settingChannels.append(channel)
+        breathChannels = [200, 201, 202, 205, 206, 208, 209, 238, 244, 248]
+        curveChannels = [100, 101, 114]
+        settingChannels = [310]
 
         self.servo.defineAcquiredData('B', breathChannels)
         self.servo.defineAcquiredData('C', curveChannels)
@@ -303,11 +291,11 @@ class ServoMainWindow(QMainWindow):
                 if category == 'C':  # Leave last data in array.
                     for index, channel in enumerate(self.servo.channelData[category]):
                         while len(self.servo.channelData[category][channel]) > 1:
-                            data = self.servo.channelData[category][channel].pop(0)
+                            rawVal = self.servo.channelData[category][channel].pop(0)
                             gain = self.servo.openChannels[category][index][1]
                             offset = self.servo.openChannels[category][index][2]
-                            data = round(data * gain - offset, 3)
-                            self.curvesWidgets[channel].updatePlot(data)
+                            value = round(rawVal * gain - offset, 3)
+                            self.curvesWidgets[channel].updatePlot(value)
 
                 if category == 'S':  # Safe to remove all data
                     for index, channel in enumerate(self.servo.channelData[category]):
@@ -318,23 +306,28 @@ class ServoMainWindow(QMainWindow):
                             else:
                                 self.currentVentilationMode = self.servo.ventilationMode.get(data)
                                 self.settingsWidgets[channel].setText(self.currentVentilationMode)
+                                if self.currentVentilationMode not in ["Pressure Control",
+                                                                       "Volume Control",
+                                                                       "Pressure Reg. Volume Control"]:
+                                    self.numericsWidgets[238].changeChannel('Ti:Ttot', 'ratio')
+                                else:
+                                    self.numericsWidgets[238].changeChannel('I:E', 'ratio')
 
                 if category == 'B':  # Safe to remove all data
                     for index, channel in enumerate(self.servo.channelData[category]):
                         while len(self.servo.channelData[category][channel]) > 0:
-                            data = self.servo.channelData[category][channel].pop(0)
+                            rawVal = self.servo.channelData[category][channel].pop(0)
                             gain = self.servo.openChannels[category][index][1]
                             offset = self.servo.openChannels[category][index][2]
-                            data = round(data * gain - offset, 3)
+                            value = round(rawVal * gain - offset, 3)
                             if channel == 238 and self.currentVentilationMode not in ["Pressure Control",
                                                                                       "Volume Control",
                                                                                       "Pressure Reg. Volume Control"]:
-                                self.numericsWidgets[channel].currentValue.setText("NA")
+                                self.numericsWidgets[channel].currentValue.setText("--")
                                 self.numericsWidgets[channel].currentValue.show()
                             else:
-                                self.numericsWidgets[channel].setValue(data)
+                                self.numericsWidgets[channel].setValue(value)
 
                 else: # catches empty data categories
                     #logger.debug('Empty data category: ' + category)
                     pass
-

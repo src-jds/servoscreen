@@ -64,15 +64,21 @@ class LargeNumeric(QWidget):
 
         self.setLayout(widgetLayout)
 
+    def changeChannel(self, name, unit):
+        self.heading = QLabel('%s %s' % (name, unit))
+        self.heading.show()
+
     def setValue(self, value):
         self.currentValue.setText(str(value))
         self.currentValue.show()
 
     def setHigh(self, value):
         self.highValue.setText(value)
+        self.highValue.show()
 
     def setLow(self, value):
         self.lowValue.setText(value)
+        self.lowValue.show()
 
 
 class SmallNumeric(QWidget):
@@ -110,6 +116,17 @@ class SmallNumeric(QWidget):
 
         self.setLayout(widgetLayout)
 
+    def changeChannel(self, name, unit):
+        self.heading.setText(name)
+        self.heading.show()
+        if unit == 'ratio':
+            self.isRatio = True
+            self.units.setText('')
+        else:
+            self.isRatio = False
+            self.units.setText(unit)
+        self.units.show()
+
     def setValue(self, value):
         if self.isRatio:
             if value < 1:
@@ -118,7 +135,6 @@ class SmallNumeric(QWidget):
                 self.currentValue.setText(str(round(value, 1)) + ':1')
         else:
             self.currentValue.setText(str(value))
-
         self.currentValue.show()
 
 
@@ -133,20 +149,31 @@ class Waveform(pqg.PlotWidget):
         self.dataPoints = 500
         self.setMouseEnabled(False, False)
         self.hideButtons()
+        self.dataAxis = self.getAxis('left')
+        #self.dataAxis.setStyle(showValues=False)
         #self.enableAutoRange(axis=pqg.ViewBox.YAxis)
 
-        self.timeAxis = self.getAxis('bottom')
+        self.x = list(range(-self.dataPoints, 0))  # Time points
+        self.y = [0] * self.dataPoints  # Data points
+        self.y_zeros = [0] * self.dataPoints
+
+        pen = pqg.mkPen(color=QtGui.QColor(color), width=3)
+        self.data_line = self.plot(self.x, self.y, pen=pen)
+
+        if axispos == 'bottom':
+            self.timeAxis = self.getAxis('bottom')
+            self.timeAxis.setStyle(showValues=False)
+        else:
+            self.timeAxis = self.hideAxis('bottom')
+            zeroAxisPen = pqg.mkPen(color=QtGui.QColor('grey'), width=1)
+            self.zeroAxis_line = self.plot(self.x, self.y, pen=zeroAxisPen)
+            #self.dataAxis.setTickSpacing(major=10000, minor=0.1)
+            #self.showGrid(y=True, alpha=1.0)
 
         self.min = minval
         self.max = maxval
 
-        self.x = list(range(-self.dataPoints, 0))  # Time points
-        self.y = [0] * self.dataPoints  # Data points
-
         #self.setYRange(maxval, minval)  # Defines the scale of the Y axis.
-
-        pen = pqg.mkPen(color=QtGui.QColor(color), width=3)
-        self.data_line = self.plot(self.x, self.y, pen=pen)
 
     def updatePlot(self, value):
         self.x = self.x[1:]
@@ -156,6 +183,7 @@ class Waveform(pqg.PlotWidget):
         self.y.append(value)
 
         self.data_line.setData(self.x, self.y)
+        self.zeroAxis_line.setData(self.x, self.y_zeros)
 
 
 class Textbox(QLabel):
