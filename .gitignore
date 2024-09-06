@@ -2,3 +2,4 @@
 /source/build/
 /venv/
 /collected logs for debugging/
+*.spec
